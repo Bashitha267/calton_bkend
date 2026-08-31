@@ -1,0 +1,5 @@
+.env
+.env.*
+
+# Optional: common local runtime files
+node_modules/

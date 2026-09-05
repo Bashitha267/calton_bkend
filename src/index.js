@@ -102,6 +102,12 @@ app.use('/api/categories', require('./routes/categories'));
 app.use('/api/reviews',    require('./routes/reviews'));
 app.use('/api/dashboard',  require('./routes/dashboard'));
 
+// ─── Ping check ───────────────────────────────────────────────────────────
+app.get(['/ping', '/api/ping'], (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ success: true, message: 'success' });
+});
+
 // ─── Health check ─────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.set('Cache-Control', 'no-store');

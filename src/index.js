@@ -108,6 +108,39 @@ app.get(['/ping', '/api/ping'], (req, res) => {
   res.json({ success: true, message: 'success' });
 });
 
+// ─── Database connection test ─────────────────────────────────────────────
+app.get(['/trydb', '/api/trydb'], async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const { pool } = require('./config/db');
+    const conn = await pool.getConnection();
+    const [rows] = await conn.query('SELECT 1 + 1 AS solution, NOW() AS serverTime, DATABASE() AS databaseName');
+    conn.release();
+
+    res.status(200).json({
+      success: true,
+      message: 'Database connected successfully',
+      database: rows[0]?.databaseName || process.env.DB_NAME,
+      serverTime: rows[0]?.serverTime,
+      testResult: rows[0]?.solution,
+    });
+  } catch (error) {
+    console.error('Database connection test failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Database connection error',
+      error: error.message,
+      code: error.code || 'DB_ERROR',
+      details: {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 3306,
+        user: process.env.DB_USER,
+        database: process.env.DB_NAME,
+      },
+    });
+  }
+});
+
 // ─── Health check ─────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.set('Cache-Control', 'no-store');

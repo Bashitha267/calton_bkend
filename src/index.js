@@ -32,12 +32,24 @@ const configuredOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000
   .map(o => o.trim().replace(/\/$/, '')) // strip trailing slashes
   .filter(Boolean);
 
+const explicitOrigins = [
+  'https://lightyellow-skunk-289163.hostingersite.com',
+  'https://darkturquoise-swan-425639.hostingersite.com',
+  'https://darkgoldenrod-wildcat-620933.hostingersite.com',
+];
+
 function isOriginAllowed(origin) {
   // Allow non-browser requests (curl, Postman, server-to-server, SSR)
   if (!origin) return true;
 
-  // Exact match from ALLOWED_ORIGINS env
-  if (configuredOrigins.includes(origin) || configuredOrigins.includes('*')) return true;
+  // Exact match from ALLOWED_ORIGINS env or explicit known domains
+  if (
+    configuredOrigins.includes(origin) ||
+    configuredOrigins.includes('*') ||
+    explicitOrigins.includes(origin)
+  ) {
+    return true;
+  }
 
   // Allow all Hostinger temporary / preview domains (*.hostingersite.com)
   if (/^https?:\/\/[a-z0-9-]+\.hostingersite\.com$/i.test(origin)) return true;
@@ -47,6 +59,21 @@ function isOriginAllowed(origin) {
 
   return false;
 }
+
+const allowedCorsHeaders = [
+  'Content-Type',
+  'Authorization',
+  'X-Requested-With',
+  'Accept',
+  'Origin',
+  'Cache-Control',
+  'cache-control',
+  'Pragma',
+  'pragma',
+  'Expires',
+  'expires',
+  'X-Cache',
+];
 
 const corsOptions = {
   origin(origin, cb) {
@@ -58,12 +85,28 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: allowedCorsHeaders,
+  exposedHeaders: ['Content-Range', 'X-Cache', 'Cache-Control'],
   optionsSuccessStatus: 200, // For legacy browser compatibility
 };
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
+
+// Explicit preflight fallback handler
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', allowedCorsHeaders.join(', '));
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // ─── Compression — reduces JSON payload ~70% ─────────────────────────────
 app.use(

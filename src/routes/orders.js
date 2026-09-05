@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
 const { query, queryOne, execute, withTransaction } = require('../config/db');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, optionalAuth, requireAdmin } = require('../middleware/auth');
 
 // Sri Lanka districts (25)
 const SL_DISTRICTS = [
@@ -157,10 +157,10 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 // ─── POST /api/orders ─────────────────────────────────────────────────────
-// Create a new order (authenticated customers or admin)
+// Create a new order (authenticated customers or guest checkout)
 router.post(
   '/',
-  requireAuth,
+  optionalAuth,
   [
     body('customerName').trim().notEmpty(),
     body('customerEmail').isEmail(),

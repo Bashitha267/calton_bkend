@@ -27,6 +27,28 @@ function requireAuth(req, res, next) {
 }
 
 /**
+ * Middleware: optional authentication.
+ * If token is present and valid, attaches req.user.
+ * If not present or invalid, req.user remains null without failing the request.
+ */
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    req.user = null;
+    return next();
+  }
+  const token = authHeader.slice(7);
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    req.user = null;
+    next();
+  }
+}
+
+/**
  * Middleware: require the authenticated user to have role === 'admin'.
  * Must be used after requireAuth.
  */
@@ -64,6 +86,7 @@ function verifyRefreshToken(token) {
 
 module.exports = {
   requireAuth,
+  optionalAuth,
   requireAdmin,
   generateAccessToken,
   generateRefreshToken,

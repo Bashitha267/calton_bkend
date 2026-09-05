@@ -210,10 +210,10 @@ CREATE TABLE `order_items` (
 -- ============================================================
 
 -- ─── Admin user (password: Admin@123) ────────────────────────────────────
--- Hash generated with bcrypt cost 10
+-- Hash generated with bcrypt cost 10 for "Admin@123"
 INSERT INTO `users` (`id`, `username`, `email`, `passwordHash`, `name`, `role`) VALUES
 ('usr-admin-1', 'admin', 'admin@carltonvalley.com',
- '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', -- password: "Admin@123" (change this!)
+ '$2a$10$iHueBB6i2vqEYK9ROOjKWORdKaIExw4NaWJ5Dxc3pzF9roYDj./WG', -- password: "Admin@123"
  'Admin', 'admin');
 
 -- ─── Categories ───────────────────────────────────────────────────────────

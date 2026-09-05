@@ -25,13 +25,30 @@ function cacheMiddleware(keyPrefix) {
     // Only cache GET requests
     if (req.method !== 'GET') return next();
 
+    // Bypass cache if client requested fresh data, has auth token, or passes _t timestamp
+    const hasNoCache =
+      (req.headers['cache-control'] && req.headers['cache-control'].includes('no-cache')) ||
+      (req.headers['pragma'] && req.headers['pragma'].includes('no-cache')) ||
+      Boolean(req.headers['authorization']) ||
+      Boolean(req.query._t);
+
+    if (hasNoCache) {
+      res.set({
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Cache': 'BYPASS',
+      });
+      return next();
+    }
+
     const cacheKey = `${keyPrefix}:${req.originalUrl}`;
     const cached = lruCache.get(cacheKey);
 
     if (cached) {
-      // Serve from cache — set Hostinger-friendly cache headers
+      // Serve from cache
       res.set({
-        'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+        'Cache-Control': 'public, max-age=10, stale-while-revalidate=30',
         'X-Cache': 'HIT',
         'Content-Type': 'application/json',
       });
@@ -46,7 +63,7 @@ function cacheMiddleware(keyPrefix) {
         lruCache.set(cacheKey, body);
       }
       res.set({
-        'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+        'Cache-Control': 'public, max-age=10, stale-while-revalidate=30',
         'X-Cache': 'MISS',
       });
       return originalJson(body);
@@ -61,6 +78,10 @@ function cacheMiddleware(keyPrefix) {
  * Call this after any write (POST/PUT/DELETE) to products or categories.
  */
 function invalidateCache(keyPrefix) {
+  if (!keyPrefix) {
+    lruCache.clear();
+    return;
+  }
   for (const key of lruCache.keys()) {
     if (key.startsWith(keyPrefix)) {
       lruCache.delete(key);

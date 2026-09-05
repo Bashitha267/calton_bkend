@@ -252,40 +252,51 @@ router.post(
           );
         }
 
-        // Sizes
-        for (let i = 0; i < sizes.length; i++) {
-          await conn.execute('INSERT INTO product_sizes (productId, size, sortOrder) VALUES (?, ?, ?)', [productId, sizes[i], i]);
+        // Sizes (safe sanitized ENUM / string handling)
+        const validSizes = ['XS', 'S', 'M', 'L', 'XL', '2XL'];
+        const cleanedSizes = (Array.isArray(sizes) ? sizes : [])
+          .map(s => String(s || '').trim().toUpperCase())
+          .filter(Boolean);
+
+        for (let i = 0; i < cleanedSizes.length; i++) {
+          const sizeVal = validSizes.includes(cleanedSizes[i]) ? cleanedSizes[i] : 'M';
+          await conn.execute('INSERT INTO product_sizes (productId, size, sortOrder) VALUES (?, ?, ?)', [productId, sizeVal, i]);
         }
 
-        // Colors (images uploaded separately)
-        for (const color of colors) {
+        // Colors (images uploaded separately or passed as URLs)
+        for (const color of (colors || [])) {
           const colorId = color.id || ('col-' + uuidv4().replace(/-/g, '').slice(0, 8));
           await conn.execute(
             'INSERT INTO product_colors (id, productId, name, hex, swatchImage) VALUES (?, ?, ?, ?, ?)',
-            [colorId, productId, color.name, color.hex || null, color.swatchImage || null]
+            [colorId, productId, color.name || 'Standard', color.hex || null, color.swatchImage || null]
           );
           if (color.images && color.images.length) {
             for (let i = 0; i < color.images.length; i++) {
-              await conn.execute(
-                'INSERT INTO product_color_images (colorId, imageUrl, sortOrder) VALUES (?, ?, ?)',
-                [colorId, color.images[i], i]
-              );
+              if (color.images[i]) {
+                await conn.execute(
+                  'INSERT INTO product_color_images (colorId, imageUrl, sortOrder) VALUES (?, ?, ?)',
+                  [colorId, color.images[i], i]
+                );
+              }
             }
           }
         }
 
         // Shipping sections
-        for (const section of shippingSections) {
+        for (const section of (shippingSections || [])) {
           const [sResult] = await conn.execute(
             'INSERT INTO shipping_sections (productId, header) VALUES (?, ?)',
-            [productId, section.header]
+            [productId, section.header || 'Shipping Information']
           );
           const sectionId = sResult.insertId;
-          for (let i = 0; i < (section.points || []).length; i++) {
-            await conn.execute(
-              'INSERT INTO shipping_points (sectionId, point, sortOrder) VALUES (?, ?, ?)',
-              [sectionId, section.points[i], i]
-            );
+          const points = Array.isArray(section.points) ? section.points : [];
+          for (let i = 0; i < points.length; i++) {
+            if (points[i]) {
+              await conn.execute(
+                'INSERT INTO shipping_points (sectionId, point, sortOrder) VALUES (?, ?, ?)',
+                [sectionId, points[i], i]
+              );
+            }
           }
         }
       });
@@ -296,7 +307,7 @@ router.post(
       return res.status(201).json({ success: true, data: { id: productId } });
     } catch (err) {
       console.error('POST /products error:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
+      return res.status(500).json({ success: false, message: err.message || 'Server error' });
     }
   }
 );
@@ -340,11 +351,17 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         );
       }
 
-      // Sizes — replace all
+      // Sizes — replace all (safe sanitized ENUM / string handling)
       if (sizes !== undefined) {
         await conn.execute('DELETE FROM product_sizes WHERE productId = ?', [id]);
-        for (let i = 0; i < sizes.length; i++) {
-          await conn.execute('INSERT INTO product_sizes (productId, size, sortOrder) VALUES (?, ?, ?)', [id, sizes[i], i]);
+        const validSizes = ['XS', 'S', 'M', 'L', 'XL', '2XL'];
+        const cleanedSizes = (Array.isArray(sizes) ? sizes : [])
+          .map(s => String(s || '').trim().toUpperCase())
+          .filter(Boolean);
+
+        for (let i = 0; i < cleanedSizes.length; i++) {
+          const sizeVal = validSizes.includes(cleanedSizes[i]) ? cleanedSizes[i] : 'M';
+          await conn.execute('INSERT INTO product_sizes (productId, size, sortOrder) VALUES (?, ?, ?)', [id, sizeVal, i]);
         }
       }
 
@@ -358,15 +375,20 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         await conn.execute('DELETE FROM product_colors WHERE productId = ?', [id]);
 
         const { v4: uuidv4 } = require('uuid');
-        for (const color of colors) {
+        for (const color of (colors || [])) {
           const colorId = color.id || ('col-' + uuidv4().replace(/-/g, '').slice(0, 8));
           await conn.execute(
             'INSERT INTO product_colors (id, productId, name, hex, swatchImage) VALUES (?, ?, ?, ?, ?)',
-            [colorId, id, color.name, color.hex || null, color.swatchImage || null]
+            [colorId, id, color.name || 'Standard', color.hex || null, color.swatchImage || null]
           );
-          if (color.images) {
+          if (color.images && color.images.length) {
             for (let i = 0; i < color.images.length; i++) {
-              await conn.execute('INSERT INTO product_color_images (colorId, imageUrl, sortOrder) VALUES (?, ?, ?)', [colorId, color.images[i], i]);
+              if (color.images[i]) {
+                await conn.execute(
+                  'INSERT INTO product_color_images (colorId, imageUrl, sortOrder) VALUES (?, ?, ?)',
+                  [colorId, color.images[i], i]
+                );
+              }
             }
           }
         }
@@ -381,11 +403,20 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         }
         await conn.execute('DELETE FROM shipping_sections WHERE productId = ?', [id]);
 
-        for (const section of shippingSections) {
-          const [sResult] = await conn.execute('INSERT INTO shipping_sections (productId, header) VALUES (?, ?)', [id, section.header]);
+        for (const section of (shippingSections || [])) {
+          const [sResult] = await conn.execute(
+            'INSERT INTO shipping_sections (productId, header) VALUES (?, ?)',
+            [id, section.header || 'Shipping Information']
+          );
           const sectionId = sResult.insertId;
-          for (let i = 0; i < (section.points || []).length; i++) {
-            await conn.execute('INSERT INTO shipping_points (sectionId, point, sortOrder) VALUES (?, ?, ?)', [sectionId, section.points[i], i]);
+          const points = Array.isArray(section.points) ? section.points : [];
+          for (let i = 0; i < points.length; i++) {
+            if (points[i]) {
+              await conn.execute(
+                'INSERT INTO shipping_points (sectionId, point, sortOrder) VALUES (?, ?, ?)',
+                [sectionId, points[i], i]
+              );
+            }
           }
         }
       }
@@ -397,7 +428,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     return res.json({ success: true, message: 'Product updated' });
   } catch (err) {
     console.error('PUT /products/:id error:', err);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 });
 

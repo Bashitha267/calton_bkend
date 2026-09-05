@@ -120,8 +120,9 @@ app.use('/api/auth',       require('./routes/auth'));
 app.use('/api/products',   require('./routes/products'));
 app.use('/api/orders',     require('./routes/orders'));
 app.use('/api/categories', require('./routes/categories'));
-app.use('/api/reviews',    require('./routes/reviews'));
-app.use('/api/dashboard',  require('./routes/dashboard'));
+app.use('/api/reviews',         require('./routes/reviews'));
+app.use('/api/dashboard',       require('./routes/dashboard'));
+app.use('/api/homepage-videos', require('./routes/homepageVideos'));
 
 // ─── Ping check ───────────────────────────────────────────────────────────
 app.get(['/ping', '/api/ping'], (req, res) => {

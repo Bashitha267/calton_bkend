@@ -71,7 +71,7 @@ DROP TABLE IF EXISTS `product_sizes`;
 CREATE TABLE `product_sizes` (
   `id`        INT         NOT NULL AUTO_INCREMENT,
   `productId` VARCHAR(50) NOT NULL,
-  `size`      ENUM('XS','S','M','L','XL','2XL') NOT NULL,
+  `size`      VARCHAR(50) NOT NULL,
   `sortOrder` TINYINT     NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_ps_product` (`productId`),
@@ -389,6 +389,27 @@ INSERT INTO `order_items` (`id`, `orderId`, `productId`, `productName`, `color`,
 ('item-9480-1','ORD-9480','prod-1','Relaxed Twill TENCEL™ Shirt','Bone White','L',1,220.00,'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=300'),
 ('item-9480-2','ORD-9480','prod-2','Pinstripe Boxy Shirt','Navy Pinstripe','L',1,180.00,'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?q=80&w=300'),
 ('item-9479-1','ORD-9479','prod-2','Pinstripe Boxy Shirt','Navy Pinstripe','XS',1,180.00,'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?q=80&w=300');
+
+-- ─── HOMEPAGE VIDEOS ───────────────────────────────────────────────────────
+DROP TABLE IF EXISTS `homepage_videos`;
+CREATE TABLE `homepage_videos` (
+  `id`          VARCHAR(50)  NOT NULL,
+  `sectionKey`  VARCHAR(50)  NOT NULL,
+  `title`       VARCHAR(255) NOT NULL,
+  `subtitle`    VARCHAR(255) DEFAULT NULL,
+  `description` TEXT         DEFAULT NULL,
+  `videoUrl`    VARCHAR(500) NOT NULL,
+  `posterUrl`   VARCHAR(500) DEFAULT NULL,
+  `isActive`    TINYINT(1)   NOT NULL DEFAULT 1,
+  `updatedAt`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `createdAt`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sectionKey` (`sectionKey`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `homepage_videos` (`id`, `sectionKey`, `title`, `subtitle`, `description`, `videoUrl`, `isActive`) VALUES
+('vid-hero',     'hero',     'Hero Background Video',  'Hero Header Section',       'Main fullscreen background loop video displayed on the top hero banner.',                    '/hero1.mp4', 1),
+('vid-featured', 'featured', 'Featured Editorial Video', 'Featured Brand Story Section', 'Portrait aspect ratio editorial story video showcasing luxury tailoring and natural textiles.', '/hero2.mp4', 1);
 
 SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================

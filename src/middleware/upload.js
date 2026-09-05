@@ -54,6 +54,51 @@ const upload = multer({
   },
 });
 
+const videoDir = path.join(UPLOAD_DIR, 'videos');
+if (!fs.existsSync(videoDir)) {
+  fs.mkdirSync(videoDir, { recursive: true });
+}
+
+const videoStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    cb(null, videoDir);
+  },
+  filename(req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase() || '.mp4';
+    const sectionKey = (req.body.sectionKey || req.params.sectionKey || 'home').replace(/[^a-z0-9\-_]/gi, '_');
+    const name = `vid_${sectionKey}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`;
+    cb(null, name);
+  },
+});
+
+function videoFileFilter(req, file, cb) {
+  const allowedMime = [
+    'video/mp4',
+    'video/webm',
+    'video/ogg',
+    'video/quicktime',
+    'video/x-msvideo',
+    'video/x-matroska',
+  ];
+  const allowedExt = ['.mp4', '.webm', '.mov', '.ogg', '.mkv'];
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  if (allowedMime.includes(file.mimetype) || allowedExt.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error(`Unsupported video format: ${file.mimetype}. Allowed: MP4, WebM, MOV, OGG`));
+  }
+}
+
+const videoUpload = multer({
+  storage: videoStorage,
+  fileFilter: videoFileFilter,
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100 MB max for videos
+    files: 1,
+  },
+});
+
 /**
  * Build a public-facing URL for a saved upload file.
  * e.g.  uploads/prod-1/col-black/img_123.jpg  →  /api/uploads/prod-1/col-black/img_123.jpg
@@ -65,4 +110,16 @@ function buildImageUrl(req, filePath) {
   return `${baseUrl}/api/uploads/${relative}`;
 }
 
-module.exports = { upload, buildImageUrl, UPLOAD_DIR };
+function buildVideoUrl(req, filePath) {
+  const relative = path.relative(UPLOAD_DIR, filePath).replace(/\\/g, '/');
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  return `${baseUrl}/api/uploads/${relative}`;
+}
+
+module.exports = {
+  upload,
+  videoUpload,
+  buildImageUrl,
+  buildVideoUrl,
+  UPLOAD_DIR,
+};

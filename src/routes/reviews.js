@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
 const { query, queryOne, execute } = require('../config/db');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, optionalAuth, requireAdmin } = require('../middleware/auth');
 
 // ─── GET /api/reviews?productId=xxx ──────────────────────────────────────
 router.get('/', async (req, res) => {
@@ -17,15 +17,15 @@ router.get('/', async (req, res) => {
     const reviews = await query(sql, params);
     return res.json({ success: true, data: reviews });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 });
 
 // ─── POST /api/reviews ────────────────────────────────────────────────────
-// Authenticated customers submit a review
+// Customers submit a review (authenticated or guest)
 router.post(
   '/',
-  requireAuth,
+  optionalAuth,
   [
     body('productId').notEmpty(),
     body('rating').isInt({ min: 1, max: 5 }),
@@ -63,7 +63,7 @@ router.post(
       return res.status(201).json({ success: true, data: { id, status: 'pending' } });
     } catch (err) {
       console.error('POST /reviews error:', err);
-      return res.status(500).json({ success: false, message: 'Server error' });
+      return res.status(500).json({ success: false, message: err.message || 'Server error' });
     }
   }
 );
@@ -93,7 +93,7 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: `Review ${status}` });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 });
 
@@ -114,7 +114,7 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
 
     return res.json({ success: true, message: 'Review deleted' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error' });
+    return res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 });
 

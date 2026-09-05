@@ -27,22 +27,43 @@ app.use(
 );
 
 // ─── CORS ─────────────────────────────────────────────────────────────────
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',')
-  .map(o => o.trim());
+  .map(o => o.trim().replace(/\/$/, '')) // strip trailing slashes
+  .filter(Boolean);
 
-app.use(
-  cors({
-    origin(origin, cb) {
-      // Allow requests with no origin (curl, Postman, SSR)
-      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-      cb(new Error(`CORS policy: origin ${origin} not allowed`));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
+function isOriginAllowed(origin) {
+  // Allow non-browser requests (curl, Postman, server-to-server, SSR)
+  if (!origin) return true;
+
+  // Exact match from ALLOWED_ORIGINS env
+  if (configuredOrigins.includes(origin) || configuredOrigins.includes('*')) return true;
+
+  // Allow all Hostinger temporary / preview domains (*.hostingersite.com)
+  if (/^https?:\/\/[a-z0-9-]+\.hostingersite\.com$/i.test(origin)) return true;
+
+  // Allow localhost / local network development on any port
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
+
+  return false;
+}
+
+const corsOptions = {
+  origin(origin, cb) {
+    if (isOriginAllowed(origin)) {
+      return cb(null, true);
+    }
+    console.warn(`[CORS] Blocked request from origin: ${origin}`);
+    cb(new Error(`CORS policy: origin ${origin} not allowed`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  optionsSuccessStatus: 200, // For legacy browser compatibility
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // ─── Compression — reduces JSON payload ~70% ─────────────────────────────
 app.use(

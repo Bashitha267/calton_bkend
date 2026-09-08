@@ -17,6 +17,7 @@ CREATE TABLE `users` (
   `passwordHash` VARCHAR(255) NOT NULL,
   `name`         VARCHAR(255) NOT NULL,
   `role`         ENUM('admin','customer') NOT NULL DEFAULT 'customer',
+  `country`      VARCHAR(100) NOT NULL DEFAULT 'Australia',
   `phone`        VARCHAR(50)  DEFAULT NULL,
   `address`      TEXT         DEFAULT NULL,
   `avatar`       VARCHAR(500) DEFAULT NULL,
@@ -25,7 +26,8 @@ CREATE TABLE `users` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_email`    (`email`),
   UNIQUE KEY `uq_username` (`username`),
-  KEY `idx_role` (`role`)
+  KEY `idx_role` (`role`),
+  KEY `idx_country` (`country`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── PRODUCTS ─────────────────────────────────────────────────────────────
@@ -410,6 +412,31 @@ CREATE TABLE `homepage_videos` (
 INSERT INTO `homepage_videos` (`id`, `sectionKey`, `title`, `subtitle`, `description`, `videoUrl`, `isActive`) VALUES
 ('vid-hero',     'hero',     'Hero Background Video',  'Hero Header Section',       'Main fullscreen background loop video displayed on the top hero banner.',                    '/hero1.mp4', 1),
 ('vid-featured', 'featured', 'Featured Editorial Video', 'Featured Brand Story Section', 'Portrait aspect ratio editorial story video showcasing luxury tailoring and natural textiles.', '/hero2.mp4', 1);
+
+-- ─── COMMUNITY SPOTLIGHT ──────────────────────────────────────────────────
+DROP TABLE IF EXISTS `community_spotlight`;
+CREATE TABLE `community_spotlight` (
+  `id`            VARCHAR(50)  NOT NULL,
+  `username`      VARCHAR(100) NOT NULL,
+  `image`         VARCHAR(500) NOT NULL,
+  `productTagged` VARCHAR(255) DEFAULT NULL,
+  `link`          VARCHAR(500) DEFAULT NULL,
+  `sortOrder`     INT          NOT NULL DEFAULT 0,
+  `isActive`      TINYINT(1)   NOT NULL DEFAULT 1,
+  `createdAt`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_active` (`isActive`),
+  KEY `idx_sort`   (`sortOrder`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `community_spotlight` (`id`, `username`, `image`, `productTagged`, `link`, `sortOrder`, `isActive`) VALUES
+('spot-1', '@alex.carlton', '/images/community_1.jpg', 'Relaxed Twill TENCEL™ Shirt', '/shop', 1, 1),
+('spot-2', '@marcus.style', '/images/community_2.jpg', 'Pinstripe Boxy Shirt', '/shop', 2, 1),
+('spot-3', '@elena.noir', '/images/community_3.jpg', 'Architectural Pleated Trouser', '/shop', 3, 1),
+('spot-4', '@julian.v', '/images/community_4.jpg', 'Resort Collar Linen Shirt', '/shop', 4, 1),
+('spot-5', '@sophia.mode', '/images/community_5.jpg', 'Oversized Structured Wool Shirt', '/shop', 5, 1),
+('spot-6', '@david.luxe', 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=1000&auto=format&fit=crop', 'Minimalist Poplin Overshirt', '/shop', 6, 1);
 
 SET FOREIGN_KEY_CHECKS = 1;
 -- ============================================================

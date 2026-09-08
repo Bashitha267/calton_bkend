@@ -116,9 +116,35 @@ function buildVideoUrl(req, filePath) {
   return `${baseUrl}/api/uploads/${relative}`;
 }
 
+const spotlightDir = path.join(UPLOAD_DIR, 'spotlight');
+if (!fs.existsSync(spotlightDir)) {
+  fs.mkdirSync(spotlightDir, { recursive: true });
+}
+
+const spotlightStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    cb(null, spotlightDir);
+  },
+  filename(req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    const name = `spot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`;
+    cb(null, name);
+  },
+});
+
+const spotlightUpload = multer({
+  storage: spotlightStorage,
+  fileFilter,
+  limits: {
+    fileSize: MAX_FILE_SIZE_MB * 1024 * 1024,
+    files: 1,
+  },
+});
+
 module.exports = {
   upload,
   videoUpload,
+  spotlightUpload,
   buildImageUrl,
   buildVideoUrl,
   UPLOAD_DIR,

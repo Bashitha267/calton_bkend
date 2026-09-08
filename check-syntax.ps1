@@ -9,7 +9,10 @@ $files = @(
   "src/routes/orders.js",
   "src/routes/categories.js",
   "src/routes/reviews.js",
-  "src/routes/dashboard.js"
+  "src/routes/dashboard.js",
+  "src/routes/users.js",
+  "src/routes/homepageVideos.js",
+  "src/routes/communitySpotlight.js"
 )
 
 $allOk = $true

@@ -33,6 +33,10 @@ const configuredOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000
   .filter(Boolean);
 
 const explicitOrigins = [
+  'https://carltonvalley.com.au',
+  'https://www.carltonvalley.com.au',
+  'http://carltonvalley.com.au',
+  'http://www.carltonvalley.com.au',
   'https://lightyellow-skunk-289163.hostingersite.com',
   'https://darkturquoise-swan-425639.hostingersite.com',
   'https://darkgoldenrod-wildcat-620933.hostingersite.com',
@@ -42,20 +46,25 @@ function isOriginAllowed(origin) {
   // Allow non-browser requests (curl, Postman, server-to-server, SSR)
   if (!origin) return true;
 
+  const normalized = origin.trim().replace(/\/$/, '').toLowerCase();
+
   // Exact match from ALLOWED_ORIGINS env or explicit known domains
   if (
-    configuredOrigins.includes(origin) ||
+    configuredOrigins.some(o => o.toLowerCase() === normalized) ||
     configuredOrigins.includes('*') ||
-    explicitOrigins.includes(origin)
+    explicitOrigins.some(o => o.toLowerCase() === normalized)
   ) {
     return true;
   }
 
+  // Allow carltonvalley.com.au and any subdomain (e.g. www, api, admin)
+  if (/^https?:\/\/([a-z0-9-]+\.)*carltonvalley\.(com|com\.au)$/i.test(normalized)) return true;
+
   // Allow all Hostinger temporary / preview domains (*.hostingersite.com)
-  if (/^https?:\/\/[a-z0-9-]+\.hostingersite\.com$/i.test(origin)) return true;
+  if (/^https?:\/\/[a-z0-9-]+\.hostingersite\.com$/i.test(normalized)) return true;
 
   // Allow localhost / local network development on any port
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalized)) return true;
 
   return false;
 }
@@ -73,6 +82,8 @@ const allowedCorsHeaders = [
   'Expires',
   'expires',
   'X-Cache',
+  'Range',
+  'User-Agent',
 ];
 
 const corsOptions = {
@@ -84,7 +95,7 @@ const corsOptions = {
     cb(new Error(`CORS policy: origin ${origin} not allowed`));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
   allowedHeaders: allowedCorsHeaders,
   exposedHeaders: ['Content-Range', 'X-Cache', 'Cache-Control'],
   optionsSuccessStatus: 200, // For legacy browser compatibility
@@ -99,8 +110,10 @@ app.use((req, res, next) => {
   if (isOriginAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', allowedCorsHeaders.join(', '));
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
+    const reqHeaders = req.headers['access-control-request-headers'];
+    res.setHeader('Access-Control-Allow-Headers', reqHeaders || allowedCorsHeaders.join(', '));
+    res.setHeader('Access-Control-Max-Age', '86400');
   }
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -159,13 +172,15 @@ app.use(
 );
 
 // ─── Routes ───────────────────────────────────────────────────────────────
-app.use('/api/auth',       require('./routes/auth'));
-app.use('/api/products',   require('./routes/products'));
-app.use('/api/orders',     require('./routes/orders'));
-app.use('/api/categories', require('./routes/categories'));
+app.use('/api/auth',            require('./routes/auth'));
+app.use('/api/users',           require('./routes/users'));
+app.use('/api/products',        require('./routes/products'));
+app.use('/api/orders',          require('./routes/orders'));
+app.use('/api/categories',      require('./routes/categories'));
 app.use('/api/reviews',         require('./routes/reviews'));
-app.use('/api/dashboard',       require('./routes/dashboard'));
-app.use('/api/homepage-videos', require('./routes/homepageVideos'));
+app.use('/api/dashboard',           require('./routes/dashboard'));
+app.use('/api/homepage-videos',     require('./routes/homepageVideos'));
+app.use('/api/community-spotlight', require('./routes/communitySpotlight'));
 
 // ─── Ping check ───────────────────────────────────────────────────────────
 app.get(['/ping', '/api/ping'], (req, res) => {

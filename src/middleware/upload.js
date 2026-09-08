@@ -20,9 +20,9 @@ if (!fs.existsSync(UPLOAD_DIR)) {
  */
 const storage = multer.diskStorage({
   destination(req, file, cb) {
-    // productId and colorId come from form fields in the same request
-    const productId = (req.body.productId || req.params.id || 'unknown').replace(/[^a-z0-9\-_]/gi, '_');
-    const colorId   = (req.body.colorId   || 'default').replace(/[^a-z0-9\-_]/gi, '_');
+    // productId and colorId come from form fields in the same request or default to general products folder
+    const productId = (req.body.productId || req.params.id || 'products').replace(/[^a-z0-9\-_]/gi, '_');
+    const colorId   = (req.body.colorId   || 'general').replace(/[^a-z0-9\-_]/gi, '_');
     const dir = path.join(UPLOAD_DIR, productId, colorId);
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
@@ -50,7 +50,7 @@ const upload = multer({
   fileFilter,
   limits: {
     fileSize: MAX_FILE_SIZE_MB * 1024 * 1024, // 50 MB
-    files: 6, // max 6 images per color (matching ProductColorVariant.images)
+    files: 10, // max 10 images per upload
   },
 });
 

@@ -49,3 +49,20 @@ INSERT INTO `community_spotlight` (`id`, `username`, `image`, `productTagged`, `
 ('spot-5', '@sophia.mode', '/images/community_5.jpg', 'Oversized Structured Wool Shirt', '/shop', 5, 1),
 ('spot-6', '@david.luxe', 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=1000&auto=format&fit=crop', 'Minimalist Poplin Overshirt', '/shop', 6, 1)
 ON DUPLICATE KEY UPDATE `username` = VALUES(`username`);
+
+-- 4. Ensure `targetCountries` column exists on `products` table
+SET @coltarget = "targetCountries";
+SET @prepProd = (SELECT IF(
+  (
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE
+      TABLE_SCHEMA = @dbname
+      AND TABLE_NAME = "products"
+      AND COLUMN_NAME = @coltarget
+  ) > 0,
+  "SELECT 1",
+  "ALTER TABLE `products` ADD COLUMN `targetCountries` VARCHAR(255) DEFAULT '[\"Australia\", \"Sri Lanka\"]' AFTER `isComingSoon`"
+));
+PREPARE alterProd FROM @prepProd;
+EXECUTE alterProd;
+DEALLOCATE PREPARE alterProd;

@@ -2,16 +2,30 @@ const router = require('express').Router();
 const path = require('path');
 const fs = require('fs');
 const { body, validationResult } = require('express-validator');
-const { query, queryOne, execute, withTransaction } = require('../config/db');
+const { pool, query, queryOne, execute, withTransaction } = require('../config/db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { upload, buildImageUrl, UPLOAD_DIR } = require('../middleware/upload');
 const { cacheMiddleware, invalidateCache } = require('../middleware/cache');
+
+// ─── Auto-ensure targetCountries column exists in products table ───────────
+async function initProductTable() {
+  try {
+    const [cols] = await pool.query("SHOW COLUMNS FROM products LIKE 'targetCountries'");
+    if (!cols || cols.length === 0) {
+      await pool.query("ALTER TABLE products ADD COLUMN targetCountries VARCHAR(255) DEFAULT '[\"Australia\", \"Sri Lanka\"]' AFTER isComingSoon");
+      console.log('✅ [DB] Added targetCountries column to products table');
+    }
+  } catch (err) {
+    console.warn('[DB] Notice checking products.targetCountries column:', err.message);
+  }
+}
+initProductTable();
 
 // ─── GET /api/products ────────────────────────────────────────────────────
 // Public — returns all products with colors, images, sizes
 router.get('/', cacheMiddleware('products'), async (req, res) => {
   try {
-    const { category, inStock, isNewArrival, isComingSoon, search } = req.query;
+    const { category, inStock, isNewArrival, isComingSoon, country, search } = req.query;
 
     let sql = `SELECT p.*, pd.header as desc_header, pd.description, pd.fit, pd.fabric, pd.details
                FROM products p
@@ -23,6 +37,7 @@ router.get('/', cacheMiddleware('products'), async (req, res) => {
     if (inStock)       { sql += ' AND p.inStock = ?';     params.push(inStock === 'true' ? 1 : 0); }
     if (isNewArrival)  { sql += ' AND p.isNewArrival = 1'; }
     if (isComingSoon)  { sql += ' AND p.isComingSoon = 1'; }
+    if (country)       { sql += ' AND (p.targetCountries IS NULL OR p.targetCountries LIKE ?)'; params.push(`%"${country}"%`); }
     if (search)        { sql += ' AND (p.name LIKE ? OR p.category LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
 
     sql += ' ORDER BY p.createdAt DESC';
@@ -82,6 +97,15 @@ router.get('/', cacheMiddleware('products'), async (req, res) => {
       const productSections = Object.values(sectionMap).filter(s => s.productId === p.id)
         .map(({ id: _id, productId: _pid, ...rest }) => rest);
 
+      let targetCountries = ['Australia', 'Sri Lanka'];
+      if (p.targetCountries) {
+        try {
+          targetCountries = typeof p.targetCountries === 'string' ? JSON.parse(p.targetCountries) : p.targetCountries;
+        } catch {
+          targetCountries = ['Australia', 'Sri Lanka'];
+        }
+      }
+
       return {
         id: p.id,
         name: p.name,
@@ -92,6 +116,7 @@ router.get('/', cacheMiddleware('products'), async (req, res) => {
         preOrder: Boolean(p.preOrder),
         isNewArrival: Boolean(p.isNewArrival),
         isComingSoon: Boolean(p.isComingSoon),
+        targetCountries,
         rating: parseFloat(p.rating),
         reviewCount: p.reviewCount,
         createdAt: p.createdAt,
@@ -158,6 +183,15 @@ router.get('/:id', cacheMiddleware('product'), async (req, res) => {
       if (sectionMap[sp.sectionId]) sectionMap[sp.sectionId].points.push(sp.point);
     }
 
+    let targetCountries = ['Australia', 'Sri Lanka'];
+    if (product.targetCountries) {
+      try {
+        targetCountries = typeof product.targetCountries === 'string' ? JSON.parse(product.targetCountries) : product.targetCountries;
+      } catch {
+        targetCountries = ['Australia', 'Sri Lanka'];
+      }
+    }
+
     return res.json({
       success: true,
       data: {
@@ -170,6 +204,7 @@ router.get('/:id', cacheMiddleware('product'), async (req, res) => {
         preOrder: Boolean(product.preOrder),
         isNewArrival: Boolean(product.isNewArrival),
         isComingSoon: Boolean(product.isComingSoon),
+        targetCountries,
         rating: parseFloat(product.rating),
         reviewCount: product.reviewCount,
         createdAt: product.createdAt,
@@ -227,6 +262,7 @@ router.post(
         name, priceAUD, category, badge,
         inStock = true, preOrder = false,
         isNewArrival = false, isComingSoon = false,
+        targetCountries = ['Australia', 'Sri Lanka'],
         sizes = [],
         colors = [],
         descriptionSection = {},
@@ -238,10 +274,11 @@ router.post(
 
       await withTransaction(async (conn) => {
         // Insert product
+        const countriesJson = JSON.stringify(Array.isArray(targetCountries) && targetCountries.length ? targetCountries : ['Australia', 'Sri Lanka']);
         await conn.execute(
-          `INSERT INTO products (id, name, priceAUD, category, badge, inStock, preOrder, isNewArrival, isComingSoon, rating, reviewCount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
-          [productId, name, priceAUD, category, badge || null, inStock ? 1 : 0, preOrder ? 1 : 0, isNewArrival ? 1 : 0, isComingSoon ? 1 : 0]
+          `INSERT INTO products (id, name, priceAUD, category, badge, inStock, preOrder, isNewArrival, isComingSoon, targetCountries, rating, reviewCount)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+          [productId, name, priceAUD, category, badge || null, inStock ? 1 : 0, preOrder ? 1 : 0, isNewArrival ? 1 : 0, isComingSoon ? 1 : 0, countriesJson]
         );
 
         // Description
@@ -322,6 +359,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     const {
       name, priceAUD, category, badge,
       inStock, preOrder, isNewArrival, isComingSoon,
+      targetCountries,
       sizes, colors, descriptionSection, shippingSections,
     } = req.body;
 
@@ -337,6 +375,11 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       if (preOrder !== undefined)    { updates.push('preOrder = ?');    vals.push(preOrder ? 1 : 0); }
       if (isNewArrival !== undefined){ updates.push('isNewArrival = ?');vals.push(isNewArrival ? 1 : 0); }
       if (isComingSoon !== undefined){ updates.push('isComingSoon = ?');vals.push(isComingSoon ? 1 : 0); }
+      if (targetCountries !== undefined) {
+        const countriesJson = JSON.stringify(Array.isArray(targetCountries) && targetCountries.length ? targetCountries : ['Australia', 'Sri Lanka']);
+        updates.push('targetCountries = ?');
+        vals.push(countriesJson);
+      }
 
       if (updates.length) {
         await conn.execute(`UPDATE products SET ${updates.join(', ')} WHERE id = ?`, [...vals, id]);
@@ -567,5 +610,69 @@ router.delete('/:id/colors/:colorId/images', requireAuth, requireAdmin, async (r
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+
+// ─── POST /api/products/upload-image ───────────────────────────────────────
+// Upload a single product or swatch image file to uploads/
+router.post(
+  '/upload-image',
+  requireAuth,
+  requireAdmin,
+  (req, res, next) => {
+    req.body.productId = req.body.productId || 'products';
+    req.body.colorId   = req.body.colorId || 'general';
+    next();
+  },
+  upload.fields([{ name: 'image', maxCount: 1 }, { name: 'file', maxCount: 1 }]),
+  (req, res) => {
+    try {
+      const file = req.file || (req.files?.image?.[0]) || (req.files?.file?.[0]);
+      if (!file) {
+        return res.status(400).json({ success: false, message: 'No image file uploaded' });
+      }
+      const imageUrl = buildImageUrl(req, file.path);
+      return res.status(201).json({
+        success: true,
+        url: imageUrl,
+        filename: file.filename,
+        message: 'Image uploaded successfully to uploads folder',
+      });
+    } catch (err) {
+      console.error('Image upload error:', err);
+      return res.status(500).json({ success: false, message: err.message || 'Image upload failed' });
+    }
+  }
+);
+
+// ─── POST /api/products/upload-images ──────────────────────────────────────
+// Upload multiple product gallery photos to uploads/
+router.post(
+  '/upload-images',
+  requireAuth,
+  requireAdmin,
+  (req, res, next) => {
+    req.body.productId = req.body.productId || 'products';
+    req.body.colorId   = req.body.colorId || 'gallery';
+    next();
+  },
+  upload.fields([{ name: 'images', maxCount: 10 }, { name: 'files', maxCount: 10 }]),
+  (req, res) => {
+    try {
+      const files = req.files?.images || req.files?.files || (req.file ? [req.file] : []);
+      if (!files || files.length === 0) {
+        return res.status(400).json({ success: false, message: 'No image files uploaded' });
+      }
+      const urls = files.map(f => buildImageUrl(req, f.path));
+      return res.status(201).json({
+        success: true,
+        urls,
+        count: urls.length,
+        message: `${urls.length} images uploaded successfully to uploads folder`,
+      });
+    } catch (err) {
+      console.error('Images upload error:', err);
+      return res.status(500).json({ success: false, message: err.message || 'Images upload failed' });
+    }
+  }
+);
 
 module.exports = router;

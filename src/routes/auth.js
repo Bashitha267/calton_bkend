@@ -1,13 +1,27 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
-const { query, queryOne, execute } = require('../config/db');
+const { pool, query, queryOne, execute } = require('../config/db');
 const {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
   requireAuth,
 } = require('../middleware/auth');
+
+// ─── Auto-ensure country column exists in users table ───────────────────────
+async function initUsersTable() {
+  try {
+    const [cols] = await pool.query("SHOW COLUMNS FROM users LIKE 'country'");
+    if (!cols || cols.length === 0) {
+      await pool.query("ALTER TABLE users ADD COLUMN country VARCHAR(100) DEFAULT 'Australia' AFTER role");
+      console.log('✅ [DB] Added country column to users table');
+    }
+  } catch (err) {
+    console.warn('[DB] Notice checking users.country column:', err.message);
+  }
+}
+initUsersTable();
 
 // ─── POST /api/auth/login ──────────────────────────────────────────────────
 router.post(
@@ -27,7 +41,7 @@ router.post(
 
       // Find user by email or username
       const user = await queryOne(
-        'SELECT id, username, email, name, role, passwordHash, phone, address, avatar FROM users WHERE email = ? OR username = ? LIMIT 1',
+        'SELECT id, username, email, name, role, country, passwordHash, phone, address, avatar FROM users WHERE email = ? OR username = ? LIMIT 1',
         [email, email]
       );
 
@@ -81,7 +95,10 @@ router.post(
     }
 
     try {
-      const { name, email, password, phone, address } = req.body;
+      const { name, email, password, phone, address, country = 'Australia' } = req.body;
+      const validCountries = ['Australia', 'Sri Lanka'];
+      const selectedCountry = validCountries.includes(country) ? country : 'Australia';
+
       const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + Date.now().toString().slice(-4);
 
       // Check existing
@@ -95,8 +112,8 @@ router.post(
       const id = 'usr-' + uuidv4().replace(/-/g, '').slice(0, 12);
 
       await execute(
-        'INSERT INTO users (id, username, email, passwordHash, name, role, phone, address) VALUES (?, ?, ?, ?, ?, "customer", ?, ?)',
-        [id, username, email, passwordHash, name, phone || null, address || null]
+        'INSERT INTO users (id, username, email, passwordHash, name, role, country, phone, address) VALUES (?, ?, ?, ?, ?, "customer", ?, ?, ?)',
+        [id, username, email, passwordHash, name, selectedCountry, phone || null, address || null]
       );
 
       const tokenPayload = { id, role: 'customer', email };
@@ -107,7 +124,7 @@ router.post(
         success: true,
         accessToken,
         refreshToken,
-        user: { id, username, email, name, role: 'customer', phone, address },
+        user: { id, username, email, name, role: 'customer', country: selectedCountry, phone, address },
       });
     } catch (err) {
       console.error('Register error:', err);
@@ -165,7 +182,7 @@ router.post('/logout', requireAuth, async (req, res) => {
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const user = await queryOne(
-      'SELECT id, username, email, name, role, phone, address, avatar, createdAt FROM users WHERE id = ?',
+      'SELECT id, username, email, name, role, country, phone, address, avatar, createdAt FROM users WHERE id = ?',
       [req.user.id]
     );
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });

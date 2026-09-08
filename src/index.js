@@ -133,19 +133,19 @@ app.use(
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// ─── Rate limiting — protect against abuse on shared hosting ─────────────
+// ─── Rate limiting — generous limits so admin and store operations never 429 ─
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 500, // 500 requests per minute
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later.' },
 });
 
-// Stricter limit for auth routes
+// Auth route limit
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 100,
   message: { success: false, message: 'Too many auth attempts, please try again later.' },
 });
 

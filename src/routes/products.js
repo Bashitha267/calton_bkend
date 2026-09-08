@@ -7,7 +7,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { upload, buildImageUrl, UPLOAD_DIR } = require('../middleware/upload');
 const { cacheMiddleware, invalidateCache } = require('../middleware/cache');
 
-// ─── Auto-ensure targetCountries column exists in products table ───────────
+// ─── Auto-ensure targetCountries and priceLKR columns exist in products table ───
 async function initProductTable() {
   try {
     const [cols] = await pool.query("SHOW COLUMNS FROM products LIKE 'targetCountries'");
@@ -15,8 +15,13 @@ async function initProductTable() {
       await pool.query("ALTER TABLE products ADD COLUMN targetCountries VARCHAR(255) DEFAULT '[\"Australia\", \"Sri Lanka\"]' AFTER isComingSoon");
       console.log('✅ [DB] Added targetCountries column to products table');
     }
+    const [colsPrice] = await pool.query("SHOW COLUMNS FROM products LIKE 'priceLKR'");
+    if (!colsPrice || colsPrice.length === 0) {
+      await pool.query("ALTER TABLE products ADD COLUMN priceLKR DECIMAL(12,2) DEFAULT NULL AFTER priceAUD");
+      console.log('✅ [DB] Added priceLKR column to products table');
+    }
   } catch (err) {
-    console.warn('[DB] Notice checking products.targetCountries column:', err.message);
+    console.warn('[DB] Notice checking products table columns:', err.message);
   }
 }
 initProductTable();
@@ -110,6 +115,7 @@ router.get('/', cacheMiddleware('products'), async (req, res) => {
         id: p.id,
         name: p.name,
         priceAUD: parseFloat(p.priceAUD),
+        priceLKR: p.priceLKR !== null && p.priceLKR !== undefined ? parseFloat(p.priceLKR) : null,
         category: p.category,
         badge: p.badge,
         inStock: Boolean(p.inStock),
@@ -198,6 +204,7 @@ router.get('/:id', cacheMiddleware('product'), async (req, res) => {
         id: product.id,
         name: product.name,
         priceAUD: parseFloat(product.priceAUD),
+        priceLKR: product.priceLKR !== null && product.priceLKR !== undefined ? parseFloat(product.priceLKR) : null,
         category: product.category,
         badge: product.badge,
         inStock: Boolean(product.inStock),
@@ -259,7 +266,7 @@ router.post(
     try {
       const {
         id,
-        name, priceAUD, category, badge,
+        name, priceAUD, priceLKR, category, badge,
         inStock = true, preOrder = false,
         isNewArrival = false, isComingSoon = false,
         targetCountries = ['Australia', 'Sri Lanka'],
@@ -275,10 +282,11 @@ router.post(
       await withTransaction(async (conn) => {
         // Insert product
         const countriesJson = JSON.stringify(Array.isArray(targetCountries) && targetCountries.length ? targetCountries : ['Australia', 'Sri Lanka']);
+        const lkrVal = priceLKR !== undefined && priceLKR !== null && !isNaN(Number(priceLKR)) ? Number(priceLKR) : null;
         await conn.execute(
-          `INSERT INTO products (id, name, priceAUD, category, badge, inStock, preOrder, isNewArrival, isComingSoon, targetCountries, rating, reviewCount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
-          [productId, name, priceAUD, category, badge || null, inStock ? 1 : 0, preOrder ? 1 : 0, isNewArrival ? 1 : 0, isComingSoon ? 1 : 0, countriesJson]
+          `INSERT INTO products (id, name, priceAUD, priceLKR, category, badge, inStock, preOrder, isNewArrival, isComingSoon, targetCountries, rating, reviewCount)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+          [productId, name, priceAUD, lkrVal, category, badge || null, inStock ? 1 : 0, preOrder ? 1 : 0, isNewArrival ? 1 : 0, isComingSoon ? 1 : 0, countriesJson]
         );
 
         // Description
@@ -357,7 +365,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     if (!existing) return res.status(404).json({ success: false, message: 'Product not found' });
 
     const {
-      name, priceAUD, category, badge,
+      name, priceAUD, priceLKR, category, badge,
       inStock, preOrder, isNewArrival, isComingSoon,
       targetCountries,
       sizes, colors, descriptionSection, shippingSections,
@@ -369,6 +377,11 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       const vals = [];
       if (name !== undefined)        { updates.push('name = ?');        vals.push(name); }
       if (priceAUD !== undefined)    { updates.push('priceAUD = ?');    vals.push(priceAUD); }
+      if (priceLKR !== undefined)    {
+        const lkrVal = priceLKR !== null && !isNaN(Number(priceLKR)) ? Number(priceLKR) : null;
+        updates.push('priceLKR = ?');
+        vals.push(lkrVal);
+      }
       if (category !== undefined)    { updates.push('category = ?');    vals.push(category); }
       if (badge !== undefined)       { updates.push('badge = ?');       vals.push(badge); }
       if (inStock !== undefined)     { updates.push('inStock = ?');     vals.push(inStock ? 1 : 0); }

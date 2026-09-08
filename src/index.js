@@ -181,6 +181,7 @@ app.use('/api/reviews',         require('./routes/reviews'));
 app.use('/api/dashboard',           require('./routes/dashboard'));
 app.use('/api/homepage-videos',     require('./routes/homepageVideos'));
 app.use('/api/community-spotlight', require('./routes/communitySpotlight'));
+app.use('/api/analytics',           require('./routes/analytics'));
 
 // ─── Ping check ───────────────────────────────────────────────────────────
 app.get(['/ping', '/api/ping'], (req, res) => {

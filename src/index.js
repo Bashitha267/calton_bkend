@@ -19,6 +19,9 @@ http.globalAgent.maxSockets = 10;
 
 const app = express();
 
+// Trust reverse proxy headers (CloudLinux / LiteSpeed / Nginx / Hostinger)
+app.set('trust proxy', 1);
+
 // ─── Security headers ─────────────────────────────────────────────────────
 app.use(
   helmet({
@@ -153,23 +156,91 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth/', authLimiter);
 
 // ─── Static file serving for uploaded images ──────────────────────────────
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const { UPLOAD_DIR } = require('./middleware/upload');
+
+// Automatically migrate files from legacy process.cwd()/uploads if Hostinger previously stored them there
+try {
+  const legacyDir = path.resolve(process.cwd(), 'uploads');
+  if (path.resolve(legacyDir) !== path.resolve(UPLOAD_DIR) && fs.existsSync(legacyDir)) {
+    const copyRecursive = (src, dest) => {
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true, mode: 0o755 });
+      const items = fs.readdirSync(src, { withFileTypes: true });
+      for (const item of items) {
+        const sPath = path.join(src, item.name);
+        const dPath = path.join(dest, item.name);
+        if (item.isDirectory()) {
+          copyRecursive(sPath, dPath);
+        } else if (!fs.existsSync(dPath)) {
+          fs.copyFileSync(sPath, dPath);
+          console.log(`[Uploads Migration] Migrated file: ${sPath} -> ${dPath}`);
+        }
+      }
+    };
+    copyRecursive(legacyDir, UPLOAD_DIR);
+  }
+} catch (migErr) {
+  console.warn('[Uploads Migration] Notice:', migErr.message);
 }
 
+// 1. Primary static serving via express.static
 app.use(
   '/api/uploads',
   express.static(UPLOAD_DIR, {
     maxAge: '7d', // browser caches images for 7 days
     etag: true,
     lastModified: true,
-    // Set immutable Cache-Control for images (they have unique timestamped filenames)
     setHeaders(res) {
       res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     },
   })
 );
+
+// 2. Explicit fallback route for /api/uploads/* to guarantee delivery even if express.static misses
+app.get('/api/uploads/*', (req, res, next) => {
+  try {
+    const rawPath = req.params[0] || '';
+    const cleanSubPath = decodeURIComponent(rawPath).replace(/^\/+/, '');
+    if (!cleanSubPath) {
+      return res.status(404).json({ success: false, message: 'No file path specified' });
+    }
+
+    // Guard against directory traversal
+    const safeSubPath = path.normalize(cleanSubPath).replace(/^(\.\.[\/\\])+/, '');
+
+    const candidatePaths = [
+      path.join(UPLOAD_DIR, safeSubPath),
+      path.resolve(__dirname, '../uploads', safeSubPath),
+      path.resolve(__dirname, '../../uploads', safeSubPath),
+      path.resolve(process.cwd(), 'uploads', safeSubPath),
+      path.resolve(process.cwd(), safeSubPath),
+    ];
+
+    for (const testPath of candidatePaths) {
+      if (fs.existsSync(testPath)) {
+        try {
+          const stat = fs.statSync(testPath);
+          if (stat.isFile()) {
+            res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            return res.sendFile(path.resolve(testPath));
+          }
+        } catch (e) {
+          // continue checking other candidates
+        }
+      }
+    }
+
+    console.warn(`[Uploads 404] File not found: "${safeSubPath}". Checked candidate paths:\n  - ${candidatePaths.join('\n  - ')}`);
+    return res.status(404).json({
+      success: false,
+      message: `File "${safeSubPath}" not found on server`,
+    });
+  } catch (err) {
+    console.error('[Uploads Error]', err);
+    return next(err);
+  }
+});
 
 // ─── Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth',            require('./routes/auth'));

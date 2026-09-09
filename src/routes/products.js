@@ -608,10 +608,18 @@ router.delete('/:id/colors/:colorId/images', requireAuth, requireAdmin, async (r
 
     // Remove file from disk
     if (imageUrl.includes('/api/uploads/')) {
-      const relativePath = imageUrl.split('/api/uploads/')[1];
-      if (relativePath) {
-        const filePath = path.join(UPLOAD_DIR, relativePath);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      const rawRel = imageUrl.split('/api/uploads/')[1];
+      if (rawRel) {
+        const safeRel = path.normalize(decodeURIComponent(rawRel)).replace(/^(\.\.[\/\\])+/, '');
+        const candidatePaths = [
+          path.join(UPLOAD_DIR, safeRel),
+          path.resolve(process.cwd(), 'uploads', safeRel),
+        ];
+        for (const fp of candidatePaths) {
+          if (fs.existsSync(fp)) {
+            try { fs.unlinkSync(fp); } catch (_) {}
+          }
+        }
       }
     }
 

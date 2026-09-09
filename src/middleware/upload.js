@@ -3,12 +3,19 @@ const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+// Ensure UPLOAD_DIR is ALWAYS an absolute path anchored to the server root directory
+// Never rely on process.cwd() which differs across Hostinger / Passenger / LiteSpeed environments
+const SERVER_ROOT = path.resolve(__dirname, '../..');
+const rawUploadDir = process.env.UPLOAD_DIR;
+const UPLOAD_DIR = rawUploadDir
+  ? (path.isAbsolute(rawUploadDir) ? rawUploadDir : path.resolve(SERVER_ROOT, rawUploadDir))
+  : path.join(SERVER_ROOT, 'uploads');
+
 const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB) || 50;
 
 // Ensure base uploads directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true, mode: 0o755 });
 }
 
 /**
@@ -24,7 +31,9 @@ const storage = multer.diskStorage({
     const productId = (req.body.productId || req.params.id || 'products').replace(/[^a-z0-9\-_]/gi, '_');
     const colorId   = (req.body.colorId   || 'general').replace(/[^a-z0-9\-_]/gi, '_');
     const dir = path.join(UPLOAD_DIR, productId, colorId);
-    fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+    }
     cb(null, dir);
   },
   filename(req, file, cb) {
@@ -106,14 +115,16 @@ const videoUpload = multer({
 function buildImageUrl(req, filePath) {
   // Convert absolute path to relative from UPLOAD_DIR
   const relative = path.relative(UPLOAD_DIR, filePath).replace(/\\/g, '/');
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  return `${baseUrl}/api/uploads/${relative}`;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${proto}://${host}/api/uploads/${relative}`;
 }
 
 function buildVideoUrl(req, filePath) {
   const relative = path.relative(UPLOAD_DIR, filePath).replace(/\\/g, '/');
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  return `${baseUrl}/api/uploads/${relative}`;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${proto}://${host}/api/uploads/${relative}`;
 }
 
 const spotlightDir = path.join(UPLOAD_DIR, 'spotlight');

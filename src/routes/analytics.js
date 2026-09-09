@@ -99,4 +99,17 @@ router.get('/summary', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// ─── DELETE /api/analytics/clear ─────────────────────────────────────────
+// Admin only — truncates the product_views table to remove seeded/fake data
+router.delete('/clear', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM product_views');
+    return res.json({ success: true, message: 'All analytics data cleared successfully.' });
+  } catch (err) {
+    console.error('[Analytics] clear error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to clear analytics data' });
+  }
+});
+
 module.exports = router;
+

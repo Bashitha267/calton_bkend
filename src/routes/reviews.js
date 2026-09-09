@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
 });
 
 // ─── POST /api/reviews ────────────────────────────────────────────────────
-// Customers submit a review (authenticated or guest)
+// Customers submit a review (authenticated or guest) — saved as 'pending'
 router.post(
   '/',
   optionalAuth,
@@ -53,7 +53,7 @@ router.post(
         [id, productId, reviewerName, date, rating, title || null, comment, itemSize || null, itemColor || null, mediaType || null, mediaUrl || null, mediaThumbnail || null]
       );
 
-      // Update product rating average
+      // Update product rating average from approved reviews only
       const reviews = await query("SELECT rating FROM reviews WHERE productId = ? AND status = 'approved'", [productId]);
       if (reviews.length > 0) {
         const avg = reviews.reduce((s, r) => s + r.rating, 0) / reviews.length;
@@ -63,6 +63,54 @@ router.post(
       return res.status(201).json({ success: true, data: { id, status: 'pending' } });
     } catch (err) {
       console.error('POST /reviews error:', err);
+      return res.status(500).json({ success: false, message: err.message || 'Server error' });
+    }
+  }
+);
+
+// ─── POST /api/reviews/admin ──────────────────────────────────────────────
+// Admin only — creates a review that is immediately 'approved' (no moderation needed)
+router.post(
+  '/admin',
+  requireAuth,
+  requireAdmin,
+  [
+    body('productId').notEmpty(),
+    body('rating').isInt({ min: 1, max: 5 }),
+    body('comment').trim().notEmpty(),
+    body('reviewerName').trim().notEmpty(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+
+    try {
+      const { productId, rating, title, comment, reviewerName, verified = true, itemSize, itemColor, mediaType, mediaUrl, mediaThumbnail } = req.body;
+
+      const product = await queryOne('SELECT id FROM products WHERE id = ?', [productId]);
+      if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+
+      const { v4: uuidv4 } = require('uuid');
+      const id = 'rev-' + uuidv4().replace(/-/g, '').slice(0, 10);
+      const date = new Date().toLocaleDateString('en-US');
+
+      // Admin reviews are immediately 'approved' and verified
+      await execute(
+        `INSERT INTO reviews (id, productId, reviewerName, verified, date, rating, title, comment, itemSize, itemColor, mediaType, mediaUrl, mediaThumbnail, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')`,
+        [id, productId, reviewerName, verified ? 1 : 0, date, rating, title || null, comment, itemSize || null, itemColor || null, mediaType || null, mediaUrl || null, mediaThumbnail || null]
+      );
+
+      // Recalculate product rating from all approved reviews
+      const approvedReviews = await query("SELECT rating FROM reviews WHERE productId = ? AND status = 'approved'", [productId]);
+      if (approvedReviews.length > 0) {
+        const avg = approvedReviews.reduce((s, r) => s + r.rating, 0) / approvedReviews.length;
+        await execute('UPDATE products SET rating = ?, reviewCount = ? WHERE id = ?', [avg.toFixed(1), approvedReviews.length, productId]);
+      }
+
+      return res.status(201).json({ success: true, data: { id, status: 'approved' } });
+    } catch (err) {
+      console.error('POST /reviews/admin error:', err);
       return res.status(500).json({ success: false, message: err.message || 'Server error' });
     }
   }
